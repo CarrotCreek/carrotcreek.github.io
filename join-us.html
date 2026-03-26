@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Join Carrot Creek</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" href="favicon.png">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>🎮 Join Carrot Creek</h1>
+    <p>Start your adventure and become part of our Minecraft town!</p>
+  </header>
+
+  <!-- Navigation -->
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="news.html">News</a>
+    <a href="events.html">Events</a>
+    <a href="join-us.html">Join Us</a>
+  </nav>
+
+  <!-- Main Content -->
+  <main>
+
+    <article>
+      <h2>How to Join</h2>
+      <p>Carrot Creek is hosted on <a href="https://minehut.com" target="_blank" rel="noopener noreferrer">Minehut</a>. Please follow all rules and guidlines while playing in our town</p>
+      <p>Carrot Creek is hosted by <a href="https://gamerdorks.net/minecraft" target="_blank" rel="noopener noreferrer">Gamer Dorks</a>. To join, follow these steps:</p>
+      <ol>
+        <li>Make sure you have Minecraft installed.</li>
+        <li>Copy the server link: <button class="button" onclick="copyServerLink()">Copy</button></li>
+        <li>Click add server and paste the IP or join directly using Direct connection. Both require the IP.</li>
+        <li>Hop in and start building, exploring, and having fun in Carrot Creek!</li>
+      </ol>
+    </article>
+
+    <article>
+      <h2>Rules for Our Town</h2>
+      <p>These rules apply to **Carrot Creek** specifically, so everyone in our town can have a fun and safe experience:</p>
+      <ul>
+        <li>Be respectful to all players in Carrot Creek.</li>
+        <li>No griefing, stealing, or breaking others’ builds.</li>
+        <li>Participate in events and community activities whenever possible.</li>
+        <li>Have fun and be creative while following the spirit of our town!</li>
+      </ul>
+    </article>
+
+    <article>
+      <h2>Quick Links</h2>
+      <p>Official Minecraft server page:</p>
+      <a href="https://gamerdorks.net/minecraft/" target="_blank" rel="noopener noreferrer" class="button">Visit Gamer Dorks</a>
+    </article>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2026 Carrot Creek Server</p>
+  </footer>
+
+  <script>
+    function copyServerLink() {
+        const serverLink = "mc.gamerdorks.net";
+        navigator.clipboard.writeText(serverLink).then(() => {
+            alert("Server link copied to clipboard!");
+        }).catch(err => {
+            alert("Failed to copy link: " + err);
+        });
+    }
+    </script>
+
+</body>
+</html>
