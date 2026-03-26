@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carrot Creek News</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" href="../favicon.png">
+</head>
+<body>
+
+  <header>
+    <h1>Carrot Creek Times Archive</h1>
+    <h1>News Archive</h1>
+    <p>Where cozy builds and great friends meet</p>
+  </header>
+
+  <nav>
+    <a href="../index.html">Home</a>
+    <a href="../news.html">News</a>
+    <a href="../news-archives.html"></a>News Archives</a>
+    <a href="../events.html">Events</a>
+    <a href="../join-us.html">Join Us</a>
+  </nav>
+
+  <main>
+
+    <!-- First Article -->
+    <article>
+      <h2>Carrot Creek: A New Town Rises on GamerDorks Server</h2>
+      <p class="date">August 7, 2025</p>
+      <p class="date">Article 1</p>
+      <img src="../images/carrot-creek-times0.jpg" alt="The first News article of Carrot Creek Times" style="width: 100%; border-radius: 6px; margin: 15px 0;">
+      <p>
+        Carrot Creek, a new town on the GamerDorks Minecraft server, has officially been established with four founding members and plans for rapid expansion.
+      </p>
+    </article>
+
+  </main>
+
+  <footer>
+    &copy; 2026 Carrot Creek News | Powered by Minecraft Creativity
+  </footer>
+
+</body>
+</html>
