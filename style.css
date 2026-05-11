@@ -5,11 +5,6 @@ body {
     padding: 0;
 }
 
-a {
-    text-decoration: none;
-    color: inherit;
-}
-
 header {
     background-color: #f57c00; /* carrot orange */
     color: white;
