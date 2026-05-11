@@ -106,10 +106,15 @@ footer {
     display: block;
     text-decoration: none;
     color: black;
-    padding: 20px 0;
-    border-bottom: 1px solid #ccc;
+
+    padding: 16px 20px;   
+    margin-bottom: 12px;  
+
+    background: white;
+    border: 1px solid #e6e6e6;
+    border-radius: 6px;
+
     transition: background 0.2s ease;
-    background: white; /* ADD THIS */
 }
 
 .archive-entry:hover {
