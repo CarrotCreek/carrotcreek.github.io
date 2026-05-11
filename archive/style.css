@@ -61,8 +61,11 @@ footer {
 
 .news-image {
     width: 100%;
+    max-width: 500px;
+    height: auto;
     border-radius: 6px;
-    margin: 15px 0;
+    margin: 15px auto;
+    display: block;
 }
 
 .date {

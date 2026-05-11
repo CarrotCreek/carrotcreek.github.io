@@ -5,6 +5,11 @@ body {
     padding: 0;
 }
 
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
 header {
     background-color: #f57c00; /* carrot orange */
     color: white;
@@ -81,8 +86,11 @@ footer {
 
 .news-image {
     width: 100%;
+    max-width: 500px;
+    height: auto;
     border-radius: 6px;
-    margin: 15px 0;
+    margin: 15px auto;
+    display: block;
 }
 
 .status {
@@ -91,6 +99,35 @@ footer {
     border-radius: 12px;
     font-size: 0.8em;
     font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.archive-list {
+    max-width: 700px;
+    margin: auto;
+}
+
+.archive-entry {
+    display: block;
+    text-decoration: none;
+    color: black;
+    padding: 20px 0;
+    border-bottom: 1px solid #ccc;
+    transition: background 0.2s ease;
+}
+
+.archive-entry:hover {
+    background: rgba(0,0,0,0.03);
+}
+
+.archive-entry h2 {
+    margin-bottom: 5px;
+    font-size: 1.5rem;
+}
+
+.archive-date {
+    color: #666;
+    font-size: 0.9rem;
     margin-bottom: 10px;
 }
 
