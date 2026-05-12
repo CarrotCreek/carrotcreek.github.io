@@ -6,75 +6,172 @@
   <title>Carrot Creek Events</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/png" href="favicon.png">
+
+  <style>
+    /* Event article styling */
+    #events-container article {
+      border: 2px solid #ffa500;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 16px 0;
+      position: relative;
+      background: #fff9f0;
+    }
+
+    .status {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background-color: #f0ad4e;
+      color: white;
+    }
+
+    .status.happening {
+      background-color: #5cb85c;
+    }
+
+    .countdown {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-weight: bold;
+      font-family: monospace;
+    }
+
+    article h2 {
+      margin-top: 40px; /* leave space for status/countdown */
+    }
+
+    article p.date {
+      font-style: italic;
+      color: #555;
+    }
+
+    article ul {
+      margin-top: 8px;
+      padding-left: 20px;
+    }
+  </style>
 </head>
 
 <body>
 
-  <header>
-    <h1>🥕 Carrot Creek Events</h1>
-    <p>See what's happening around the server!</p>
-  </header>
+<header>
+  <h1>🥕 Carrot Creek Events</h1>
+  <p>See what's happening around the server!</p>
+</header>
 
-  <nav>
-    <a href="index.html">Home</a>
-    <a href="news.html">News</a>
-    <a href="news-archives.html">News Archives</a>
-    <a href="events.html">Events</a>
-    <a href="join-us.html">Join Us</a>
-  </nav>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="news.html">News</a>
+  <a href="news-archives.html">News Archives</a>
+  <a href="events.html">Events</a>
+  <a href="join-us.html">Join Us</a>
+</nav>
 
-  <main>
+<main>
+  <section id="events-container">
+    <!-- Dynamic events will be injected here -->
+  </section>
 
-    <!-- Featured Event -->
-    <article class="featured">
-      <div class="status upcoming">Coming Soon</div>
-      <h2>🐣 Easter Weekend Event</h2>
-      <p class="date">Easter Weekend</p>
+  <article>
+    <h2>🌱 Don’t Miss Out!</h2>
+    <p>Join the server and be part of all upcoming events.</p>
+    <a href="join-us.html" class="button">Join Now</a>
+  </article>
+</main>
 
-      <p>Hop into Carrot Creek for a fun spring celebration!</p>
-      <ul>
-        <li>🛒 All shops are 50% off</li>
-        <li>🎁 Gift exchange — give and receive surprises</li>
-        <li>🌸 Chill, explore, and enjoy the vibes</li>
-      </ul>
+<footer>
+  <p>© 2026 Carrot Creek Server</p>
+</footer>
 
-      <p class="countdown">Starts soon!</p>
-    </article>
+<script>
+  async function loadEvents() {
+    const response = await fetch('events.json');
+    const events = await response.json();
 
-    <!-- Other Events -->
-    <article>
-      <div class="status upcoming">Coming Soon</div>
-      <h2>🏗️ Build Competition</h2>
-      <p class="date">April 5</p>
-      <p>Theme: Arenas! Show us your best PvP arena! Can have redstone traps!</p>
-    </article>
+    const container = document.getElementById('events-container');
+    container.innerHTML = '';
 
-    <article>
-      <div class="status upcoming">Coming Soon</div>
-      <h2>⚔️ PvP Tournament</h2>
-      <p class="date">April 12</p>
-      <p>Fight against other players and prove your skills!</p>
-    </article>
+    const now = new Date();
 
-    <article>
-      <div class="status upcoming">Coming Soon</div>
-      <h2>🎉 Community Game Night</h2>
-      <p class="date">April 19</p>
-      <p>Mini-games, prizes, and a great time with everyone.</p>
-    </article>
+    events
+            .filter(event => new Date(event.date) > now) // only upcoming
+            .sort((a, b) => new Date(a.date) - new Date(b.date))
+            .forEach(event => {
+              const eventDate = new Date(event.date);
+              const article = document.createElement('article');
 
-    <!-- Call to Action -->
-    <article>
-      <h2>🌱 Don’t Miss Out!</h2>
-      <p>Join the server and be part of all upcoming events.</p>
-      <a href="join-us.html" class="button">Join Now</a>
-    </article>
+              // STATUS
+              const status = document.createElement('div');
+              status.className = 'status';
+              status.textContent = (now >= eventDate) ? 'Happening' : 'Coming Soon';
+              if (now >= eventDate) status.classList.add('happening');
 
-  </main>
+              // COUNTDOWN
+              const countdown = document.createElement('p');
+              countdown.className = 'countdown';
+              countdown.textContent = getCountdown(eventDate);
 
-  <footer>
-    <p>© 2026 Carrot Creek Server</p>
-  </footer>
+              // Update countdown every second
+              setInterval(() => {
+                countdown.textContent = getCountdown(eventDate);
+              }, 1000);
+
+              // TITLE
+              const title = document.createElement('h2');
+              title.textContent = event.title;
+
+              // DATE
+              const dateEl = document.createElement('p');
+              dateEl.className = 'date';
+              dateEl.textContent = eventDate.toLocaleString();
+
+              // DESCRIPTION
+              const desc = document.createElement('p');
+              desc.textContent = event.description;
+
+              article.appendChild(status);
+              article.appendChild(countdown);
+              article.appendChild(title);
+              article.appendChild(dateEl);
+              article.appendChild(desc);
+
+              // DETAILS LIST
+              if (event.details) {
+                const ul = document.createElement('ul');
+                event.details.forEach(item => {
+                  const li = document.createElement('li');
+                  li.textContent = item;
+                  ul.appendChild(li);
+                });
+                article.appendChild(ul);
+              }
+
+              container.appendChild(article);
+            });
+  }
+
+  // Countdown formatter
+  function getCountdown(date) {
+    const now = new Date();
+    const diff = date - now;
+
+    if (diff <= 0) return "Happening now!";
+
+    const days = Math.floor(diff / (1000*60*60*24));
+    const hours = Math.floor((diff / (1000*60*60)) % 24);
+    const minutes = Math.floor((diff / (1000*60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  document.addEventListener('DOMContentLoaded', loadEvents);
+</script>
 
 </body>
 </html>
