@@ -12,6 +12,13 @@ header {
     text-align: center;
 }
 
+span {
+    font-size: 2em;       /* same size as h1 (adjust if needed) */
+    font-weight: bold;    /* h1 is usually bold */
+    line-height: 1.2;     /* vertical spacing like h1 */
+    font-family: inherit; /* match the page font */
+}
+
 nav {
     background-color: #388e3c; /* green */
     padding: 12px;
