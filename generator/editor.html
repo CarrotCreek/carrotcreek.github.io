@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preset Editor</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/png" href="../favicon.png">
+<style>
+  /* Editor-specific overrides */
+  .app-shell {
+    grid-template-columns: 200px 1fr 240px;
+  }
+
+  /* Canvas frame overlays drawn via JS on <canvas>, but resize handles need DOM */
+  #frameHandlesLayer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: white;
+    border: 2px solid var(--accent);
+    border-radius: 2px;
+    pointer-events: all;
+    cursor: nwse-resize;
+    z-index: 10;
+  }
+
+  .resize-handle.nw { cursor: nw-resize; }
+  .resize-handle.ne { cursor: ne-resize; }
+  .resize-handle.sw { cursor: sw-resize; }
+  .resize-handle.se { cursor: se-resize; }
+  .resize-handle.n  { cursor: n-resize; }
+  .resize-handle.s  { cursor: s-resize; }
+  .resize-handle.e  { cursor: e-resize; }
+  .resize-handle.w  { cursor: w-resize; }
+
+  .frame-label-overlay {
+    position: absolute;
+    pointer-events: none;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 2px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ── Header ── -->
+  <header class="app-header">
+    <div class="logo">Press<span>Set</span></div>
+    <div class="subtitle">Layout Editor</div>
+    <nav style="display:flex;gap:6px;margin-left:16px;">
+      <a class="nav-link active" href="editor.html">Editor</a>
+      <a class="nav-link" href="generator.html">Generator</a>
+    </nav>
+    <div class="header-actions">
+      <button class="btn" id="btnLoadPreset" title="Load existing preset JSON">📂 Load Preset</button>
+      <button class="btn btn-primary" id="btnSavePreset">💾 Save Preset</button>
+    </div>
+  </header>
+
+  <!-- ── Left Panel: Tools ── -->
+  <aside class="panel-left">
+
+    <div class="panel-section">
+      <div class="panel-section-title">Background</div>
+      <div class="upload-zone" id="bgUploadZone">
+        <input type="file" id="bgFileInput" accept="image/*">
+        <div class="upload-icon">🖼</div>
+        <p>Drop or click<br>to set background</p>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Tools</div>
+      <div class="btn-group">
+        <button class="btn btn-tool active" id="toolSelect" data-tool="select">
+          <span class="tool-icon">↖</span> Select / Move
+        </button>
+        <button class="btn btn-tool" id="toolImage" data-tool="image">
+          <span class="tool-icon">🖼</span> Add Image Frame
+        </button>
+        <button class="btn btn-tool" id="toolText" data-tool="text">
+          <span class="tool-icon">T</span> Add Text Frame
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Grid</div>
+      <div class="form-row">
+        <label>Snap</label>
+        <label style="display:flex;align-items:center;gap:6px;flex:1;">
+          <input type="checkbox" id="snapToggle" checked>
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--ui-text);">Enabled</span>
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Grid px</label>
+        <input type="number" id="gridSize" value="20" min="5" max="100" style="width:60px;">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Zoom</div>
+      <div class="col-2">
+        <button class="btn btn-sm" id="btnZoomIn">+ In</button>
+        <button class="btn btn-sm" id="btnZoomOut">- Out</button>
+        <button class="btn btn-sm" id="btnZoomFit" style="grid-column:1/-1;">⊡ Fit</button>
+      </div>
+      <div style="text-align:center;margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ui-muted);">
+        <span id="zoomLabel">100%</span>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Actions</div>
+      <div class="btn-group">
+        <button class="btn btn-danger btn-tool" id="btnDeleteFrame">
+          <span class="tool-icon">✕</span> Delete Selected
+        </button>
+        <button class="btn btn-tool" id="btnClearAll">
+          <span class="tool-icon">⊘</span> Clear All Frames
+        </button>
+        <button class="btn btn-tool" id="btnDuplicateFrame">
+          <span class="tool-icon">⧉</span> Duplicate Frame
+        </button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Canvas ── -->
+  <main class="canvas-area" id="canvasArea">
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="mainCanvas" width="800" height="1100"></canvas>
+      <div id="frameHandlesLayer"></div>
+    </div>
+    <div class="status-bar" id="statusBar">No background loaded · Draw frames with Image or Text tool</div>
+  </main>
+
+  <!-- ── Right Panel: Properties ── -->
+  <aside class="panel-right">
+
+    <div class="panel-section">
+      <div class="panel-section-title">Frame Properties</div>
+      <div id="propsEmpty" class="empty-state">
+        Select a frame<br>to edit its properties
+      </div>
+      <div id="propsPanel" style="display:none;">
+        <div class="form-row">
+          <label>Type</label>
+          <span id="propType" class="badge"></span>
+        </div>
+        <div class="rule-h"></div>
+        <div class="form-row">
+          <label>X</label>
+          <input type="number" id="propX">
+        </div>
+        <div class="form-row">
+          <label>Y</label>
+          <input type="number" id="propY">
+        </div>
+        <div class="form-row">
+          <label>W</label>
+          <input type="number" id="propW">
+        </div>
+        <div class="form-row">
+          <label>H</label>
+          <input type="number" id="propH">
+        </div>
+        <div id="textProps">
+          <div class="rule-h"></div>
+          <div class="form-row">
+            <label>Font</label>
+            <select id="propFont">
+              <option>Times New Roman</option>
+              <option>Georgia</option>
+              <option>Playfair Display</option>
+              <option>Arial</option>
+              <option>Helvetica</option>
+              <option>IBM Plex Sans</option>
+              <option>IBM Plex Mono</option>
+              <option>Courier New</option>
+              <option>Garamond</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Size</label>
+            <input type="number" id="propFontSize" value="16" min="6" max="200">
+          </div>
+          <div class="form-row">
+            <label>Align</label>
+            <select id="propAlign">
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+              <option value="justify">Justify</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Bold</label>
+            <label style="display:flex;align-items:center;gap:6px;flex:1;">
+              <input type="checkbox" id="propBold">
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--ui-text);">Bold</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>Italic</label>
+            <label style="display:flex;align-items:center;gap:6px;flex:1;">
+              <input type="checkbox" id="propItalic">
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--ui-text);">Italic</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>Color</label>
+            <input type="color" id="propColor" value="#111111">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Preset Info</div>
+      <div class="form-row">
+        <label>Name</label>
+        <input type="text" id="presetName" value="my_layout" placeholder="preset name">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Frames (<span id="frameCount">0</span>)</div>
+      <div class="frame-list" id="frameList">
+        <div class="empty-state">No frames yet</div>
+      </div>
+    </div>
+
+  </aside>
+
+</div>
+
+<!-- Save Modal -->
+<div class="modal-backdrop hidden" id="saveModal">
+  <div class="modal">
+    <h2>Save Preset</h2>
+    <p style="font-family:var(--font-mono);font-size:11px;color:var(--ui-muted);margin-bottom:16px;">
+      Download the layout as a JSON file. Place it in your <code style="color:var(--accent);">/presets/</code> folder to use in the Generator.
+    </p>
+    <div class="form-row">
+      <label>Name</label>
+      <input type="text" id="savePresetName" value="my_layout">
+    </div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--ui-muted);margin-top:8px;">
+      <span id="saveFrameCount"></span> frames defined
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelSave">Cancel</button>
+      <button class="btn btn-primary" id="btnConfirmSave">⬇ Download JSON</button>
+    </div>
+  </div>
+</div>
+
+<!-- Load Preset Modal -->
+<div class="modal-backdrop hidden" id="loadModal">
+  <div class="modal">
+    <h2>Load Preset</h2>
+    <p style="font-family:var(--font-mono);font-size:11px;color:var(--ui-muted);margin-bottom:16px;">
+      Select a previously saved preset JSON file to continue editing.
+    </p>
+    <div class="upload-zone" style="margin-bottom:12px;">
+      <input type="file" id="loadFileInput" accept=".json">
+      <div class="upload-icon">📋</div>
+      <p>Click to select a preset JSON file</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelLoad">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  NEWSPAPER BUILDER — PRESET EDITOR
+// ══════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const canvasWrapper = document.getElementById('canvasWrapper');
+const handlesLayer = document.getElementById('frameHandlesLayer');
+const statusBar = document.getElementById('statusBar');
+
+// ── State ──
+let state = {
+  frames: [],
+  selectedId: null,
+  tool: 'select',
+  bgImage: null,
+  bgDataUrl: null,
+  zoom: 1,
+  snapEnabled: true,
+  gridSize: 20,
+  canvasW: 800,
+  canvasH: 1100,
+  nextId: 1,
+  drawing: false,
+  drawStart: null,
+  dragging: false,
+  dragStart: null,
+  resizing: false,
+  resizeHandle: null,
+  resizeStart: null,
+};
+
+// ── Utilities ──
+function snap(v) {
+  if (!state.snapEnabled) return Math.round(v);
+  return Math.round(v / state.gridSize) * state.gridSize;
+}
+
+function genId() { return state.nextId++; }
+
+function toast(msg, type='') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' '+type : '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function setStatus(msg) { statusBar.textContent = msg; }
+
+function getFrame(id) { return state.frames.find(f => f.id === id); }
+
+// ── Canvas sizing ──
+function applyZoom() {
+  canvas.style.width  = (state.canvasW * state.zoom) + 'px';
+  canvas.style.height = (state.canvasH * state.zoom) + 'px';
+  handlesLayer.style.width  = (state.canvasW * state.zoom) + 'px';
+  handlesLayer.style.height = (state.canvasH * state.zoom) + 'px';
+  document.getElementById('zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+  redraw();
+  updateHandles();
+}
+
+function fitCanvas() {
+  const area = document.getElementById('canvasArea');
+  const padding = 40;
+  const zw = (area.clientWidth  - padding) / state.canvasW;
+  const zh = (area.clientHeight - padding) / state.canvasH;
+  state.zoom = Math.min(zw, zh, 1);
+  applyZoom();
+}
+
+// ── Canvas coords from mouse ──
+function clientToCanvas(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / state.zoom,
+    y: (e.clientY - rect.top)  / state.zoom,
+  };
+}
+
+// ── Redraw ──
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  if (state.bgImage) {
+    ctx.drawImage(state.bgImage, 0, 0, canvas.width, canvas.height);
+  } else {
+    // Default paper
+    ctx.fillStyle = '#f5f0e8';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Faint ruled lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < canvas.height; y += 28) {
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+    }
+  }
+
+  // Grid dots
+  if (state.snapEnabled && state.zoom > 0.4) {
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let x = 0; x <= canvas.width; x += state.gridSize) {
+      for (let y = 0; y <= canvas.height; y += state.gridSize) {
+        ctx.fillRect(x-0.5, y-0.5, 1, 1);
+      }
+    }
+  }
+
+  // Frames
+  state.frames.forEach(f => drawFrame(f));
+}
+
+function drawFrame(f) {
+  const selected = f.id === state.selectedId;
+  const isImage = f.type === 'image';
+
+  ctx.save();
+
+  // Fill
+  if (isImage) {
+    ctx.fillStyle = 'rgba(41,128,185,0.08)';
+  } else {
+    ctx.fillStyle = 'rgba(39,174,96,0.08)';
+  }
+  ctx.fillRect(f.x, f.y, f.w, f.h);
+
+  // Border
+  ctx.lineWidth = selected ? 2.5 : 1.5;
+  ctx.strokeStyle = selected
+    ? '#c0392b'
+    : (isImage ? 'rgba(41,128,185,0.7)' : 'rgba(39,174,96,0.7)');
+  ctx.setLineDash(selected ? [] : [6, 3]);
+  ctx.strokeRect(f.x, f.y, f.w, f.h);
+  ctx.setLineDash([]);
+
+  // Icon + label
+  ctx.font = `bold 11px "IBM Plex Mono", monospace`;
+  const labelBg = isImage ? 'rgba(41,128,185,0.85)' : 'rgba(39,174,96,0.85)';
+  const label = isImage
+    ? `▣ IMAGE  ${Math.round(f.w)}×${Math.round(f.h)}`
+    : `¶ TEXT  ${f.fontFamily ? f.fontFamily.split(' ')[0] : 'Times'} ${f.fontSize || 16}px`;
+
+  const tw = ctx.measureText(label).width + 10;
+  ctx.fillStyle = labelBg;
+  ctx.fillRect(f.x, f.y, tw, 18);
+  ctx.fillStyle = 'white';
+  ctx.fillText(label, f.x + 5, f.y + 13);
+
+  ctx.restore();
+}
+
+// ── Handle overlays ──
+function updateHandles() {
+  handlesLayer.innerHTML = '';
+  const f = getFrame(state.selectedId);
+  if (!f) return;
+
+  const z = state.zoom;
+  const positions = [
+    { id:'nw', lx: f.x,           ly: f.y           },
+    { id:'n',  lx: f.x + f.w/2,   ly: f.y           },
+    { id:'ne', lx: f.x + f.w,     ly: f.y           },
+    { id:'e',  lx: f.x + f.w,     ly: f.y + f.h/2   },
+    { id:'se', lx: f.x + f.w,     ly: f.y + f.h     },
+    { id:'s',  lx: f.x + f.w/2,   ly: f.y + f.h     },
+    { id:'sw', lx: f.x,           ly: f.y + f.h     },
+    { id:'w',  lx: f.x,           ly: f.y + f.h/2   },
+  ];
+
+  positions.forEach(p => {
+    const h = document.createElement('div');
+    h.className = `resize-handle ${p.id}`;
+    h.style.left = (p.lx * z - 5) + 'px';
+    h.style.top  = (p.ly * z - 5) + 'px';
+    h.dataset.handle = p.id;
+    handlesLayer.appendChild(h);
+
+    h.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const f2 = getFrame(state.selectedId);
+      state.resizing = true;
+      state.resizeHandle = p.id;
+      state.resizeStart = {
+        mx: e.clientX, my: e.clientY,
+        ox: f2.x, oy: f2.y, ow: f2.w, oh: f2.h
+      };
+    });
+  });
+}
+
+// ── Mouse Events on Canvas ──
+canvas.addEventListener('mousedown', onCanvasMouseDown);
+window.addEventListener('mousemove', onWindowMouseMove);
+window.addEventListener('mouseup',   onWindowMouseUp);
+
+function onCanvasMouseDown(e) {
+  if (e.button !== 0) return;
+  const pt = clientToCanvas(e);
+
+  if (state.tool === 'select') {
+    // Hit test frames (in reverse for top-most first)
+    let hit = null;
+    for (let i = state.frames.length - 1; i >= 0; i--) {
+      const f = state.frames[i];
+      if (pt.x >= f.x && pt.x <= f.x+f.w && pt.y >= f.y && pt.y <= f.y+f.h) {
+        hit = f; break;
+      }
+    }
+    if (hit) {
+      state.selectedId = hit.id;
+      state.dragging = true;
+      state.dragStart = { mx: e.clientX, my: e.clientY, ox: hit.x, oy: hit.y };
+    } else {
+      state.selectedId = null;
+    }
+    updatePropsPanel();
+    updateFrameList();
+    redraw();
+    updateHandles();
+  } else {
+    // Drawing mode
+    const sx = snap(pt.x);
+    const sy = snap(pt.y);
+    state.drawing = true;
+    state.drawStart = { x: sx, y: sy };
+  }
+}
+
+function onWindowMouseMove(e) {
+  const pt = clientToCanvas(e);
+
+  if (state.resizing) {
+    const f = getFrame(state.selectedId);
+    if (!f) return;
+    const dx = (e.clientX - state.resizeStart.mx) / state.zoom;
+    const dy = (e.clientY - state.resizeStart.my) / state.zoom;
+    const handle = state.resizeHandle;
+    let { ox, oy, ow, oh } = state.resizeStart;
+    let nx=ox, ny=oy, nw=ow, nh=oh;
+
+    if (handle.includes('e')) nw = Math.max(20, snap(ow + dx));
+    if (handle.includes('s')) nh = Math.max(20, snap(oh + dy));
+    if (handle.includes('w')) { nx = snap(ox+dx); nw = Math.max(20, snap(ow-dx)); }
+    if (handle.includes('n')) { ny = snap(oy+dy); nh = Math.max(20, snap(oh-dy)); }
+
+    f.x = nx; f.y = ny; f.w = nw; f.h = nh;
+    redraw();
+    updateHandles();
+    updatePropsPanel();
+    setStatus(`Frame: ${Math.round(f.w)}×${Math.round(f.h)} @ (${Math.round(f.x)},${Math.round(f.y)})`);
+    return;
+  }
+
+  if (state.dragging) {
+    const f = getFrame(state.selectedId);
+    if (!f) return;
+    const dx = (e.clientX - state.dragStart.mx) / state.zoom;
+    const dy = (e.clientY - state.dragStart.my) / state.zoom;
+    f.x = snap(state.dragStart.ox + dx);
+    f.y = snap(state.dragStart.oy + dy);
+    redraw();
+    updateHandles();
+    updatePropsPanel();
+    setStatus(`Moving: (${Math.round(f.x)},${Math.round(f.y)})`);
+    return;
+  }
+
+  if (state.drawing) {
+    const ex = snap(pt.x);
+    const ey = snap(pt.y);
+    redraw();
+    // Preview rect
+    const x = Math.min(state.drawStart.x, ex);
+    const y = Math.min(state.drawStart.y, ey);
+    const w = Math.abs(ex - state.drawStart.x);
+    const h = Math.abs(ey - state.drawStart.y);
+    ctx.save();
+    ctx.strokeStyle = state.tool === 'image' ? '#2980b9' : '#27ae60';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = state.tool === 'image' ? 'rgba(41,128,185,0.1)' : 'rgba(39,174,96,0.1)';
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    setStatus(`Drawing: ${Math.round(w)}×${Math.round(h)}`);
+  } else {
+    // Hover cursor feedback
+    if (state.tool === 'select') {
+      let overFrame = false;
+      for (const f of state.frames) {
+        if (pt.x>=f.x && pt.x<=f.x+f.w && pt.y>=f.y && pt.y<=f.y+f.h) {
+          overFrame = true; break;
+        }
+      }
+      canvas.style.cursor = overFrame ? 'move' : 'default';
+    } else {
+      canvas.style.cursor = 'crosshair';
+    }
+    setStatus(`${Math.round(pt.x)}, ${Math.round(pt.y)} px · ${state.frames.length} frame(s)`);
+  }
+}
+
+function onWindowMouseUp(e) {
+  if (state.resizing) {
+    state.resizing = false;
+    updatePropsPanel();
+    updateFrameList();
+    return;
+  }
+
+  if (state.dragging) {
+    state.dragging = false;
+    updatePropsPanel();
+    return;
+  }
+
+  if (state.drawing) {
+    state.drawing = false;
+    const pt = clientToCanvas(e);
+    const ex = snap(pt.x);
+    const ey = snap(pt.y);
+    const x = Math.min(state.drawStart.x, ex);
+    const y = Math.min(state.drawStart.y, ey);
+    const w = Math.abs(ex - state.drawStart.x);
+    const h = Math.abs(ey - state.drawStart.y);
+
+    if (w < 10 || h < 10) { redraw(); return; }
+
+    const frame = {
+      id: genId(),
+      type: state.tool,
+      x, y, w, h,
+      ...(state.tool === 'text' ? {
+        fontSize: 16,
+        fontFamily: 'Times New Roman',
+        textAlign: 'left',
+        bold: false,
+        italic: false,
+        color: '#111111',
+      } : {})
+    };
+
+    state.frames.push(frame);
+    state.selectedId = frame.id;
+    updatePropsPanel();
+    updateFrameList();
+    redraw();
+    updateHandles();
+    toast(`${state.tool === 'image' ? 'Image' : 'Text'} frame added`, 'success');
+    setStatus(`Frame created: ${Math.round(w)}×${Math.round(h)}`);
+  }
+}
+
+// ── Properties Panel ──
+function updatePropsPanel() {
+  const f = getFrame(state.selectedId);
+  const empty = document.getElementById('propsEmpty');
+  const panel = document.getElementById('propsPanel');
+
+  if (!f) {
+    empty.style.display = '';
+    panel.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  panel.style.display = '';
+
+  const typeEl = document.getElementById('propType');
+  typeEl.className = 'badge ' + (f.type === 'image' ? 'badge-image' : 'badge-text');
+  typeEl.textContent = f.type.toUpperCase();
+
+  document.getElementById('propX').value = Math.round(f.x);
+  document.getElementById('propY').value = Math.round(f.y);
+  document.getElementById('propW').value = Math.round(f.w);
+  document.getElementById('propH').value = Math.round(f.h);
+
+  const textProps = document.getElementById('textProps');
+  textProps.style.display = f.type === 'text' ? '' : 'none';
+
+  if (f.type === 'text') {
+    document.getElementById('propFont').value = f.fontFamily || 'Times New Roman';
+    document.getElementById('propFontSize').value = f.fontSize || 16;
+    document.getElementById('propAlign').value = f.textAlign || 'left';
+    document.getElementById('propBold').checked = f.bold || false;
+    document.getElementById('propItalic').checked = f.italic || false;
+    document.getElementById('propColor').value = f.color || '#111111';
+  }
+}
+
+// Wire up prop inputs
+['propX','propY','propW','propH'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    const f = getFrame(state.selectedId);
+    if (!f) return;
+    f.x = parseFloat(document.getElementById('propX').value) || 0;
+    f.y = parseFloat(document.getElementById('propY').value) || 0;
+    f.w = parseFloat(document.getElementById('propW').value) || 10;
+    f.h = parseFloat(document.getElementById('propH').value) || 10;
+    redraw();
+    updateHandles();
+  });
+});
+
+['propFont','propFontSize','propAlign','propBold','propItalic','propColor'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const evt = el.type === 'checkbox' ? 'change' : 'input';
+  el.addEventListener(evt, () => {
+    const f = getFrame(state.selectedId);
+    if (!f || f.type !== 'text') return;
+    f.fontFamily = document.getElementById('propFont').value;
+    f.fontSize = parseInt(document.getElementById('propFontSize').value) || 16;
+    f.textAlign = document.getElementById('propAlign').value;
+    f.bold = document.getElementById('propBold').checked;
+    f.italic = document.getElementById('propItalic').checked;
+    f.color = document.getElementById('propColor').value;
+    redraw();
+  });
+});
+
+// ── Frame List ──
+function updateFrameList() {
+  const list = document.getElementById('frameList');
+  document.getElementById('frameCount').textContent = state.frames.length;
+
+  if (state.frames.length === 0) {
+    list.innerHTML = '<div class="empty-state">No frames yet</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  state.frames.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'frame-list-item' + (f.id === state.selectedId ? ' selected' : '');
+    item.innerHTML = `
+      <span class="badge ${f.type === 'image' ? 'badge-image' : 'badge-text'}">${f.type[0].toUpperCase()}</span>
+      <span class="frame-name">${f.type} #${i+1} · ${Math.round(f.w)}×${Math.round(f.h)}</span>
+      <button class="frame-del" data-id="${f.id}" title="Delete">✕</button>
+    `;
+    item.addEventListener('click', () => {
+      state.selectedId = f.id;
+      state.tool = 'select';
+      activateTool('select');
+      updatePropsPanel();
+      updateFrameList();
+      redraw();
+      updateHandles();
+    });
+    item.querySelector('.frame-del').addEventListener('click', e => {
+      e.stopPropagation();
+      deleteFrame(f.id);
+    });
+    list.appendChild(item);
+  });
+}
+
+// ── Tools ──
+function activateTool(tool) {
+  state.tool = tool;
+  document.querySelectorAll('.btn-tool[data-tool]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === tool);
+  });
+  canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+  if (tool !== 'select') {
+    state.selectedId = null;
+    updatePropsPanel();
+    updateFrameList();
+    updateHandles();
+    redraw();
+  }
+}
+
+document.querySelectorAll('.btn-tool[data-tool]').forEach(b => {
+  b.addEventListener('click', () => activateTool(b.dataset.tool));
+});
+
+// ── Delete / Clear ──
+function deleteFrame(id) {
+  state.frames = state.frames.filter(f => f.id !== id);
+  if (state.selectedId === id) state.selectedId = null;
+  updatePropsPanel();
+  updateFrameList();
+  redraw();
+  updateHandles();
+  toast('Frame deleted');
+}
+
+document.getElementById('btnDeleteFrame').addEventListener('click', () => {
+  if (state.selectedId) deleteFrame(state.selectedId);
+  else toast('No frame selected');
+});
+
+document.getElementById('btnClearAll').addEventListener('click', () => {
+  if (confirm('Clear all frames?')) {
+    state.frames = [];
+    state.selectedId = null;
+    updatePropsPanel();
+    updateFrameList();
+    redraw();
+    updateHandles();
+    toast('All frames cleared');
+  }
+});
+
+document.getElementById('btnDuplicateFrame').addEventListener('click', () => {
+  const f = getFrame(state.selectedId);
+  if (!f) { toast('No frame selected'); return; }
+  const dup = { ...f, id: genId(), x: f.x + 20, y: f.y + 20 };
+  state.frames.push(dup);
+  state.selectedId = dup.id;
+  updatePropsPanel();
+  updateFrameList();
+  redraw();
+  updateHandles();
+  toast('Frame duplicated', 'success');
+});
+
+// ── Background Upload ──
+document.getElementById('bgFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadBgFile(file);
+});
+
+const bgZone = document.getElementById('bgUploadZone');
+bgZone.addEventListener('dragover', e => { e.preventDefault(); bgZone.classList.add('drag-over'); });
+bgZone.addEventListener('dragleave', () => bgZone.classList.remove('drag-over'));
+bgZone.addEventListener('drop', e => {
+  e.preventDefault();
+  bgZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadBgFile(file);
+});
+
+function loadBgFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      state.bgImage = img;
+      state.bgDataUrl = ev.target.result;
+      state.canvasW = img.naturalWidth;
+      state.canvasH = img.naturalHeight;
+      canvas.width  = state.canvasW;
+      canvas.height = state.canvasH;
+      fitCanvas();
+      toast('Background loaded: ' + img.naturalWidth + '×' + img.naturalHeight, 'success');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Zoom ──
+document.getElementById('btnZoomIn').addEventListener('click',  () => { state.zoom = Math.min(state.zoom * 1.25, 5); applyZoom(); });
+document.getElementById('btnZoomOut').addEventListener('click', () => { state.zoom = Math.max(state.zoom * 0.8, 0.1); applyZoom(); });
+document.getElementById('btnZoomFit').addEventListener('click', fitCanvas);
+
+document.getElementById('snapToggle').addEventListener('change', e => { state.snapEnabled = e.target.checked; redraw(); });
+document.getElementById('gridSize').addEventListener('input',   e => { state.gridSize = parseInt(e.target.value) || 20; redraw(); });
+
+// ── Save / Export ──
+document.getElementById('btnSavePreset').addEventListener('click', () => {
+  document.getElementById('savePresetName').value = document.getElementById('presetName').value || 'my_layout';
+  document.getElementById('saveFrameCount').textContent = state.frames.length;
+  document.getElementById('saveModal').classList.remove('hidden');
+});
+
+document.getElementById('btnCancelSave').addEventListener('click', () => {
+  document.getElementById('saveModal').classList.add('hidden');
+});
+
+document.getElementById('btnConfirmSave').addEventListener('click', () => {
+  const name = document.getElementById('savePresetName').value.trim().replace(/\s+/g,'_') || 'my_layout';
+  document.getElementById('presetName').value = name;
+
+  const preset = {
+    name,
+    background: name + '_bg.jpg',
+    canvasWidth:  state.canvasW,
+    canvasHeight: state.canvasH,
+    frames: state.frames.map(f => {
+      const out = { type: f.type, x: Math.round(f.x), y: Math.round(f.y), width: Math.round(f.w), height: Math.round(f.h) };
+      if (f.type === 'text') {
+        out.fontSize   = f.fontSize || 16;
+        out.fontFamily = f.fontFamily || 'Times New Roman';
+        out.textAlign  = f.textAlign || 'left';
+        out.bold       = f.bold || false;
+        out.italic     = f.italic || false;
+        out.color      = f.color || '#111111';
+      }
+      return out;
+    })
+  };
+
+  const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name + '.json';
+  a.click();
+
+  // Also offer background download if loaded
+  if (state.bgDataUrl) {
+    setTimeout(() => {
+      const a2 = document.createElement('a');
+      a2.href = state.bgDataUrl;
+      a2.download = name + '_bg.jpg';
+      a2.click();
+    }, 400);
+  }
+
+  document.getElementById('saveModal').classList.add('hidden');
+  toast('Preset saved: ' + name + '.json', 'success');
+});
+
+// ── Load Preset ──
+document.getElementById('btnLoadPreset').addEventListener('click', () => {
+  document.getElementById('loadModal').classList.remove('hidden');
+});
+
+document.getElementById('btnCancelLoad').addEventListener('click', () => {
+  document.getElementById('loadModal').classList.add('hidden');
+});
+
+document.getElementById('loadFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const preset = JSON.parse(ev.target.result);
+      loadPreset(preset);
+      document.getElementById('loadModal').classList.add('hidden');
+      toast('Preset loaded: ' + preset.name, 'success');
+    } catch(err) {
+      toast('Invalid JSON file');
+    }
+  };
+  reader.readAsText(file);
+});
+
+function loadPreset(preset) {
+  state.frames = (preset.frames || []).map((f, i) => ({
+    id: genId(),
+    type: f.type,
+    x: f.x, y: f.y, w: f.width, h: f.height,
+    fontSize:   f.fontSize   || 16,
+    fontFamily: f.fontFamily || 'Times New Roman',
+    textAlign:  f.textAlign  || 'left',
+    bold:       f.bold       || false,
+    italic:     f.italic     || false,
+    color:      f.color      || '#111111',
+  }));
+
+  if (preset.canvasWidth && preset.canvasHeight) {
+    state.canvasW = preset.canvasWidth;
+    state.canvasH = preset.canvasHeight;
+    canvas.width  = state.canvasW;
+    canvas.height = state.canvasH;
+  }
+
+  document.getElementById('presetName').value = preset.name || 'my_layout';
+  state.selectedId = null;
+  fitCanvas();
+  updatePropsPanel();
+  updateFrameList();
+  redraw();
+  updateHandles();
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (state.selectedId) deleteFrame(state.selectedId);
+  }
+  if (e.key === 's') activateTool('select');
+  if (e.key === 'i') activateTool('image');
+  if (e.key === 't') activateTool('text');
+  if (e.key === 'd') document.getElementById('btnDuplicateFrame').click();
+  if (e.key === 'Escape') { state.selectedId = null; updatePropsPanel(); updateFrameList(); redraw(); updateHandles(); }
+});
+
+// ── Init ──
+window.addEventListener('resize', fitCanvas);
+fitCanvas();
+setStatus('Upload a background image, then draw frames · [S]elect [I]mage [T]ext');
+</script>
+</body>
+</html>

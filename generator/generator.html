@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Newspaper Generator</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/png" href="../favicon.png">
+<style>
+  .app-shell {
+    grid-template-columns: 210px 1fr 240px;
+  }
+
+  /* Generated frame overlay system */
+  #overlayLayer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .gen-frame {
+    position: absolute;
+    pointer-events: all;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .gen-frame.image-frame {
+    border: 2px dashed rgba(41,128,185,0.5);
+    background: rgba(41,128,185,0.04);
+    cursor: pointer;
+  }
+
+  .gen-frame.image-frame.has-content {
+    border: none;
+    background: none;
+  }
+
+  .gen-frame.text-frame {
+    border: 1px solid rgba(39,174,96,0.3);
+    background: transparent;
+  }
+
+  .gen-frame.text-frame.selected-frame {
+    outline: 2px solid rgba(39,174,96,0.7);
+    outline-offset: 1px;
+  }
+
+  .gen-frame img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+  }
+
+  .gen-frame img.fit { object-fit: contain; }
+  .gen-frame img.cover { object-fit: cover; }
+
+  .gen-frame textarea {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 4px 6px;
+    line-height: 1.4;
+    box-sizing: border-box;
+    cursor: text;
+    overflow: hidden;
+  }
+
+  .drop-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    pointer-events: none;
+    color: rgba(41,128,185,0.6);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-align: center;
+    padding: 8px;
+  }
+
+  .drop-hint .dh-icon { font-size: 24px; margin-bottom: 4px; }
+
+  .gen-frame.image-frame.drag-target-active {
+    background: rgba(41,128,185,0.15) !important;
+    border-color: rgba(41,128,185,0.9) !important;
+    border-style: solid !important;
+  }
+
+  /* Preset thumbnails */
+  .preset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 6px;
+  }
+
+  .preset-item:hover { border-color: var(--ui-muted); background: rgba(255,255,255,0.03); }
+  .preset-item.active { border-color: var(--accent); background: rgba(192,57,43,0.08); }
+
+  .preset-icon { font-size: 22px; flex-shrink: 0; }
+  .preset-info { min-width: 0; }
+  .preset-name { font-family: var(--font-mono); font-size: 11px; color: var(--ui-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preset-meta { font-family: var(--font-mono); font-size: 9px; color: var(--ui-muted); margin-top: 2px; }
+
+  /* Image library */
+  .img-library {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .img-thumb {
+    aspect-ratio: 1;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: grab;
+    background: rgba(0,0,0,0.3);
+    position: relative;
+    transition: all 0.12s;
+  }
+
+  .img-thumb:hover { border-color: var(--frame-image); }
+  .img-thumb:active { cursor: grabbing; }
+
+  .img-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    display: block;
+  }
+
+  .img-thumb .img-del {
+    position: absolute;
+    top: 2px; right: 2px;
+    background: rgba(192,57,43,0.85);
+    border: none;
+    color: white;
+    font-size: 10px;
+    width: 18px; height: 18px;
+    border-radius: 2px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+  }
+
+  .img-thumb:hover .img-del { display: flex; }
+
+  /* Frame inspector in right panel */
+  .frame-inspector .fi-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .frame-inspector label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ui-muted);
+    min-width: 52px;
+    flex-shrink: 0;
+  }
+
+  .frame-inspector select,
+  .frame-inspector input {
+    flex: 1;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: var(--radius);
+    min-width: 0;
+  }
+
+  .frame-inspector select:focus,
+  .frame-inspector input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo">News<span>Gen</span></div>
+    <div class="subtitle">Layout Filler</div>
+    <nav style="display:flex;gap:6px;margin-left:16px;">
+      <a class="nav-link" href="editor.html">Editor</a>
+      <a class="nav-link active" href="generator.html">Generator</a>
+    </nav>
+    <div class="header-actions">
+      <button class="btn" id="btnShowFrameBorders" title="Toggle frame borders">⊡ Borders</button>
+      <button class="btn" id="btnClearContent">⊘ Clear Content</button>
+      <button class="btn btn-primary" id="btnExport">⬇ Export</button>
+    </div>
+  </header>
+
+  <!-- Left Panel -->
+  <aside class="panel-left">
+
+    <div class="panel-section">
+      <div class="panel-section-title">Load Preset</div>
+      <div class="upload-zone" style="padding:16px;">
+        <input type="file" id="presetFileInput" accept=".json">
+        <div class="upload-icon">📋</div>
+        <p>Load preset JSON</p>
+      </div>
+      <div id="presetLoadedInfo" style="display:none;margin-top:8px;">
+        <div class="preset-item active" id="activePresetItem">
+          <div class="preset-icon">📰</div>
+          <div class="preset-info">
+            <div class="preset-name" id="activePresetName">–</div>
+            <div class="preset-meta" id="activePresetMeta">–</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Background</div>
+      <div class="upload-zone" style="padding:14px;">
+        <input type="file" id="bgFileInput" accept="image/*">
+        <div class="upload-icon" style="font-size:20px;">🖼</div>
+        <p>Load background image</p>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Images (<span id="imgLibCount">0</span>)</div>
+      <p style="font-family:var(--font-mono);font-size:9px;color:var(--ui-muted);margin-bottom:8px;">Upload then drag into image frames</p>
+      <div class="upload-zone" style="padding:12px;" id="imgUploadZone">
+        <input type="file" id="imgFileInput" accept="image/*" multiple>
+        <div class="upload-icon" style="font-size:18px;">+</div>
+        <p>Add images</p>
+      </div>
+      <div class="img-library" id="imgLibrary" style="margin-top:8px;"></div>
+    </div>
+
+  </aside>
+
+  <!-- Canvas Area -->
+  <main class="canvas-area" id="canvasArea">
+    <div class="canvas-wrapper" id="canvasWrapper" style="position:relative;">
+      <canvas id="mainCanvas" width="800" height="1100"></canvas>
+      <div id="overlayLayer"></div>
+    </div>
+    <div class="status-bar" id="statusBar">Load a preset JSON to begin</div>
+  </main>
+
+  <!-- Right Panel -->
+  <aside class="panel-right">
+
+    <div class="panel-section">
+      <div class="panel-section-title">Selected Frame</div>
+      <div id="inspectorEmpty" class="empty-state">Click a frame<br>to inspect & edit</div>
+      <div id="inspectorPanel" class="frame-inspector" style="display:none;">
+        <div class="fi-row">
+          <label>Type</label>
+          <span id="insp-type" class="badge"></span>
+        </div>
+        <div class="fi-row">
+          <label>Size</label>
+          <span id="insp-size" style="font-family:var(--font-mono);font-size:10px;color:var(--ui-muted);"></span>
+        </div>
+        <div class="rule-h"></div>
+
+        <!-- Image frame controls -->
+        <div id="insp-image-controls">
+          <div class="fi-row">
+            <label>Fit mode</label>
+            <select id="insp-fit-mode">
+              <option value="cover">Cover (fill)</option>
+              <option value="contain">Fit (contain)</option>
+            </select>
+          </div>
+          <div class="fi-row">
+            <label>Image</label>
+            <button class="btn btn-sm" id="insp-clear-img">✕ Remove</button>
+          </div>
+          <div class="fi-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+            <label style="min-width:auto;">Or upload directly:</label>
+            <label class="btn btn-sm" style="cursor:pointer;width:100%;justify-content:center;">
+              📁 Browse
+              <input type="file" id="insp-img-upload" accept="image/*" style="display:none;">
+            </label>
+          </div>
+        </div>
+
+        <!-- Text frame controls -->
+        <div id="insp-text-controls" style="display:none;">
+          <div class="fi-row">
+            <label>Font</label>
+            <select id="insp-font"></select>
+          </div>
+          <div class="fi-row">
+            <label>Size</label>
+            <input type="number" id="insp-font-size" min="6" max="300">
+          </div>
+          <div class="fi-row">
+            <label>Align</label>
+            <select id="insp-align">
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+              <option value="justify">Justify</option>
+            </select>
+          </div>
+          <div class="fi-row">
+            <label>Bold</label>
+            <input type="checkbox" id="insp-bold">
+          </div>
+          <div class="fi-row">
+            <label>Italic</label>
+            <input type="checkbox" id="insp-italic">
+          </div>
+          <div class="fi-row">
+            <label>Color</label>
+            <input type="color" id="insp-color">
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Zoom</div>
+      <div class="col-2">
+        <button class="btn btn-sm" id="btnZoomIn">+ In</button>
+        <button class="btn btn-sm" id="btnZoomOut">- Out</button>
+        <button class="btn btn-sm" id="btnZoomFit" style="grid-column:1/-1;">⊡ Fit</button>
+      </div>
+      <div style="text-align:center;margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ui-muted);">
+        <span id="zoomLabel">100%</span>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Frames (<span id="frameCount">0</span>)</div>
+      <div id="frameListRight" class="frame-list">
+        <div class="empty-state">No preset loaded</div>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-backdrop hidden" id="exportModal">
+  <div class="modal">
+    <h2>Export Newspaper</h2>
+    <p style="font-family:var(--font-mono);font-size:11px;color:var(--ui-muted);margin-bottom:16px;">
+      Renders the full page (background + all content) to a single image file.
+    </p>
+    <div class="form-row">
+      <label>Format</label>
+      <select id="exportFormat">
+        <option value="png">PNG (lossless)</option>
+        <option value="jpg">JPG (compressed)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Quality</label>
+      <input type="range" id="exportQuality" min="0.5" max="1" step="0.05" value="0.92" style="flex:1;">
+      <span id="exportQualityLabel" style="font-family:var(--font-mono);font-size:10px;min-width:30px;">92%</span>
+    </div>
+    <div class="form-row">
+      <label>Scale</label>
+      <select id="exportScale">
+        <option value="1">1× (original)</option>
+        <option value="2" selected>2× (high res)</option>
+        <option value="3">3× (print res)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelExport">Cancel</button>
+      <button class="btn btn-primary" id="btnConfirmExport">⬇ Download</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  NEWSPAPER BUILDER — GENERATOR
+// ══════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const canvasWrapper = document.getElementById('canvasWrapper');
+const overlayLayer = document.getElementById('overlayLayer');
+const statusBar = document.getElementById('statusBar');
+
+const FONTS = [
+  'Times New Roman','Georgia','Playfair Display','Garamond',
+  'Arial','Helvetica','IBM Plex Sans','IBM Plex Mono','Courier New',
+  'Palatino','Book Antiqua','Baskerville'
+];
+
+// Populate font selects
+['insp-font'].forEach(id => {
+  const el = document.getElementById(id);
+  FONTS.forEach(f => {
+    const o = document.createElement('option');
+    o.value = f; o.textContent = f;
+    el.appendChild(o);
+  });
+});
+
+// ── State ──
+let state = {
+  preset: null,
+  frames: [],           // runtime frame objects with content
+  bgImage: null,
+  bgDataUrl: null,
+  zoom: 1,
+  selectedFrameId: null,
+  showBorders: true,
+  imageLibrary: [],     // {id, name, dataUrl, img}
+  canvasW: 800,
+  canvasH: 1100,
+  nextId: 1,
+  draggingLibImg: null, // library image being dragged
+};
+
+function genId() { return state.nextId++; }
+
+function toast(msg, type='') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' '+type : '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function setStatus(msg) { statusBar.textContent = msg; }
+
+function getFrame(id) { return state.frames.find(f => f.id === id); }
+
+// ── Zoom ──
+function applyZoom() {
+  canvas.style.width  = (state.canvasW * state.zoom) + 'px';
+  canvas.style.height = (state.canvasH * state.zoom) + 'px';
+  overlayLayer.style.width  = (state.canvasW * state.zoom) + 'px';
+  overlayLayer.style.height = (state.canvasH * state.zoom) + 'px';
+  document.getElementById('zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+  rebuildOverlays();
+}
+
+function fitCanvas() {
+  const area = document.getElementById('canvasArea');
+  const zw = (area.clientWidth  - 40) / state.canvasW;
+  const zh = (area.clientHeight - 40) / state.canvasH;
+  state.zoom = Math.min(zw, zh, 1);
+  applyZoom();
+}
+
+document.getElementById('btnZoomIn').addEventListener('click',  () => { state.zoom = Math.min(state.zoom * 1.25, 5); applyZoom(); });
+document.getElementById('btnZoomOut').addEventListener('click', () => { state.zoom = Math.max(state.zoom * 0.8, 0.1); applyZoom(); });
+document.getElementById('btnZoomFit').addEventListener('click', fitCanvas);
+
+// ── Background Drawing ──
+function redrawBackground() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state.bgImage) {
+    ctx.drawImage(state.bgImage, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = '#f5f0e8';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < canvas.height; y += 28) {
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+    }
+  }
+
+  if (state.showBorders) {
+    state.frames.forEach(f => drawFrameGuide(f));
+  }
+}
+
+function drawFrameGuide(f) {
+  ctx.save();
+  ctx.strokeStyle = f.type === 'image' ? 'rgba(41,128,185,0.3)' : 'rgba(39,174,96,0.2)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  ctx.strokeRect(f.x, f.y, f.w, f.h);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ── Overlay System ──
+function rebuildOverlays() {
+  overlayLayer.innerHTML = '';
+  const z = state.zoom;
+
+  state.frames.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'gen-frame ' + (f.type === 'image' ? 'image-frame' : 'text-frame');
+    div.dataset.frameId = f.id;
+    div.style.left   = (f.x * z) + 'px';
+    div.style.top    = (f.y * z) + 'px';
+    div.style.width  = (f.w * z) + 'px';
+    div.style.height = (f.h * z) + 'px';
+
+    if (f.id === state.selectedFrameId) {
+      div.classList.add('selected-frame');
+    }
+
+    if (f.type === 'image') {
+      buildImageFrame(div, f);
+    } else {
+      buildTextFrame(div, f, z);
+    }
+
+    overlayLayer.appendChild(div);
+  });
+
+  redrawBackground();
+  updateRightPanel();
+}
+
+function buildImageFrame(div, f) {
+  if (f.imgDataUrl) {
+    div.classList.add('has-content');
+    const img = document.createElement('img');
+    img.src = f.imgDataUrl;
+    img.className = f.fitMode || 'cover';
+    div.appendChild(img);
+  } else {
+    const hint = document.createElement('div');
+    hint.className = 'drop-hint';
+    hint.innerHTML = `<div class="dh-icon">🖼</div><div>Drag image here<br>or click to browse</div>`;
+    div.appendChild(hint);
+  }
+
+  // Click to select + browse
+  div.addEventListener('click', e => {
+    selectFrame(f.id);
+    if (!f.imgDataUrl) openImageBrowseForFrame(f.id);
+  });
+
+  // Drag-and-drop from library
+  div.addEventListener('dragover', e => {
+    if (state.draggingLibImg) {
+      e.preventDefault();
+      div.classList.add('drag-target-active');
+    }
+  });
+
+  div.addEventListener('dragleave', () => div.classList.remove('drag-target-active'));
+
+  div.addEventListener('drop', e => {
+    e.preventDefault();
+    div.classList.remove('drag-target-active');
+    if (state.draggingLibImg) {
+      f.imgDataUrl = state.draggingLibImg.dataUrl;
+      state.draggingLibImg = null;
+      rebuildOverlays();
+      toast('Image placed', 'success');
+    }
+  });
+}
+
+function buildTextFrame(div, f, z) {
+  const ta = document.createElement('textarea');
+  ta.value = f.content || '';
+  ta.placeholder = 'Click to type…';
+  ta.spellcheck = true;
+
+  // Apply text styling
+  const fontStyle = (f.italic ? 'italic ' : '') + (f.bold ? 'bold ' : '');
+  ta.style.fontSize   = ((f.fontSize || 16) * z) + 'px';
+  ta.style.fontFamily = f.fontFamily || 'Times New Roman';
+  ta.style.textAlign  = f.textAlign  || 'left';
+  ta.style.fontWeight = f.bold   ? 'bold'   : 'normal';
+  ta.style.fontStyle  = f.italic ? 'italic' : 'normal';
+  ta.style.color      = f.color || '#111111';
+
+  ta.addEventListener('focus', () => selectFrame(f.id));
+  ta.addEventListener('input', () => { f.content = ta.value; });
+
+  div.appendChild(ta);
+  div.addEventListener('click', () => selectFrame(f.id));
+}
+
+function selectFrame(id) {
+  state.selectedFrameId = id;
+  updateInspector();
+  // Highlight in overlays
+  document.querySelectorAll('.gen-frame').forEach(el => {
+    el.classList.toggle('selected-frame', el.dataset.frameId == id);
+  });
+  updateRightPanelList();
+}
+
+function openImageBrowseForFrame(frameId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const f = getFrame(frameId);
+      if (f) {
+        f.imgDataUrl = ev.target.result;
+        rebuildOverlays();
+        toast('Image placed', 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+// ── Inspector ──
+function updateInspector() {
+  const f = getFrame(state.selectedFrameId);
+  const empty = document.getElementById('inspectorEmpty');
+  const panel = document.getElementById('inspectorPanel');
+  const imgCtrl  = document.getElementById('insp-image-controls');
+  const textCtrl = document.getElementById('insp-text-controls');
+
+  if (!f) {
+    empty.style.display = '';
+    panel.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  panel.style.display = '';
+
+  const typeEl = document.getElementById('insp-type');
+  typeEl.className = 'badge ' + (f.type==='image' ? 'badge-image' : 'badge-text');
+  typeEl.textContent = f.type.toUpperCase();
+  document.getElementById('insp-size').textContent = `${Math.round(f.w)} × ${Math.round(f.h)} px`;
+
+  imgCtrl.style.display  = f.type === 'image' ? '' : 'none';
+  textCtrl.style.display = f.type === 'text'  ? '' : 'none';
+
+  if (f.type === 'image') {
+    document.getElementById('insp-fit-mode').value = f.fitMode || 'cover';
+  }
+
+  if (f.type === 'text') {
+    document.getElementById('insp-font').value      = f.fontFamily || 'Times New Roman';
+    document.getElementById('insp-font-size').value = f.fontSize || 16;
+    document.getElementById('insp-align').value     = f.textAlign || 'left';
+    document.getElementById('insp-bold').checked    = f.bold || false;
+    document.getElementById('insp-italic').checked  = f.italic || false;
+    document.getElementById('insp-color').value     = f.color || '#111111';
+  }
+}
+
+// Wire inspector controls
+document.getElementById('insp-fit-mode').addEventListener('change', e => {
+  const f = getFrame(state.selectedFrameId);
+  if (f) { f.fitMode = e.target.value; rebuildOverlays(); }
+});
+
+document.getElementById('insp-clear-img').addEventListener('click', () => {
+  const f = getFrame(state.selectedFrameId);
+  if (f) { f.imgDataUrl = null; rebuildOverlays(); toast('Image removed'); }
+});
+
+document.getElementById('insp-img-upload').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const f = getFrame(state.selectedFrameId);
+    if (f) { f.imgDataUrl = ev.target.result; rebuildOverlays(); toast('Image placed', 'success'); }
+  };
+  reader.readAsDataURL(file);
+});
+
+function wireTextControl(elId, prop, isCheck=false) {
+  document.getElementById(elId).addEventListener(isCheck ? 'change' : 'input', e => {
+    const f = getFrame(state.selectedFrameId);
+    if (!f || f.type !== 'text') return;
+    f[prop] = isCheck ? e.target.checked : e.target.value;
+    rebuildOverlays();
+    // Re-select to preserve focus
+    setTimeout(() => {
+      const overlay = overlayLayer.querySelector(`[data-frame-id="${f.id}"] textarea`);
+      if (overlay) overlay.focus();
+    }, 10);
+  });
+}
+
+wireTextControl('insp-font',      'fontFamily');
+wireTextControl('insp-font-size', 'fontSize');
+wireTextControl('insp-align',     'textAlign');
+wireTextControl('insp-bold',      'bold', true);
+wireTextControl('insp-italic',    'italic', true);
+wireTextControl('insp-color',     'color');
+
+// ── Right Panel Frame List ──
+function updateRightPanel() { updateRightPanelList(); }
+
+function updateRightPanelList() {
+  const list = document.getElementById('frameListRight');
+  document.getElementById('frameCount').textContent = state.frames.length;
+
+  if (state.frames.length === 0) {
+    list.innerHTML = '<div class="empty-state">No preset loaded</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  state.frames.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'frame-list-item' + (f.id === state.selectedFrameId ? ' selected' : '');
+    const filled = f.type === 'image' ? !!f.imgDataUrl : !!(f.content && f.content.trim());
+    item.innerHTML = `
+      <span class="badge ${f.type==='image'?'badge-image':'badge-text'}">${f.type[0].toUpperCase()}</span>
+      <span class="frame-name">${f.type} #${i+1}</span>
+      <span style="font-size:12px;">${filled ? '✓' : '○'}</span>
+    `;
+    item.addEventListener('click', () => selectFrame(f.id));
+    list.appendChild(item);
+  });
+}
+
+// ── Load Preset ──
+document.getElementById('presetFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const preset = JSON.parse(ev.target.result);
+      loadPreset(preset);
+    } catch(err) {
+      toast('Invalid JSON preset');
+    }
+  };
+  reader.readAsText(file);
+});
+
+function loadPreset(preset) {
+  state.preset = preset;
+  state.canvasW = preset.canvasWidth  || 800;
+  state.canvasH = preset.canvasHeight || 1100;
+  canvas.width  = state.canvasW;
+  canvas.height = state.canvasH;
+
+  state.frames = (preset.frames || []).map(f => ({
+    id: genId(),
+    type:       f.type,
+    x:          f.x,
+    y:          f.y,
+    w:          f.width,
+    h:          f.height,
+    fontFamily: f.fontFamily || 'Times New Roman',
+    fontSize:   f.fontSize   || 16,
+    textAlign:  f.textAlign  || 'left',
+    bold:       f.bold       || false,
+    italic:     f.italic     || false,
+    color:      f.color      || '#111111',
+    fitMode:    'cover',
+    imgDataUrl: null,
+    content:    '',
+  }));
+
+  state.selectedFrameId = null;
+
+  document.getElementById('presetLoadedInfo').style.display = '';
+  document.getElementById('activePresetName').textContent = preset.name || 'Unnamed';
+  const imgCount  = state.frames.filter(f=>f.type==='image').length;
+  const textCount = state.frames.filter(f=>f.type==='text').length;
+  document.getElementById('activePresetMeta').textContent = `${imgCount} image, ${textCount} text frames`;
+
+  fitCanvas();
+  setStatus(`Preset "${preset.name}" loaded · ${state.frames.length} frames`);
+  toast('Preset loaded: ' + preset.name, 'success');
+}
+
+// ── Background Load ──
+document.getElementById('bgFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      state.bgImage   = img;
+      state.bgDataUrl = ev.target.result;
+      redrawBackground();
+      toast('Background loaded', 'success');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// ── Image Library ──
+document.getElementById('imgFileInput').addEventListener('change', e => {
+  Array.from(e.target.files).forEach(file => addToLibrary(file));
+});
+
+const imgUploadZone = document.getElementById('imgUploadZone');
+imgUploadZone.addEventListener('dragover', e => { e.preventDefault(); imgUploadZone.classList.add('drag-over'); });
+imgUploadZone.addEventListener('dragleave', () => imgUploadZone.classList.remove('drag-over'));
+imgUploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  imgUploadZone.classList.remove('drag-over');
+  Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(addToLibrary);
+});
+
+function addToLibrary(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const entry = {
+      id: genId(),
+      name: file.name,
+      dataUrl: ev.target.result,
+    };
+    state.imageLibrary.push(entry);
+    renderLibrary();
+    toast('Image added to library', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderLibrary() {
+  const lib = document.getElementById('imgLibrary');
+  document.getElementById('imgLibCount').textContent = state.imageLibrary.length;
+  lib.innerHTML = '';
+
+  state.imageLibrary.forEach(entry => {
+    const thumb = document.createElement('div');
+    thumb.className = 'img-thumb';
+    thumb.draggable = true;
+    thumb.title = entry.name;
+
+    const img = document.createElement('img');
+    img.src = entry.dataUrl;
+    img.alt = entry.name;
+
+    const del = document.createElement('button');
+    del.className = 'img-del';
+    del.textContent = '✕';
+    del.title = 'Remove from library';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      state.imageLibrary = state.imageLibrary.filter(x => x.id !== entry.id);
+      renderLibrary();
+    });
+
+    thumb.appendChild(img);
+    thumb.appendChild(del);
+    lib.appendChild(thumb);
+
+    // Drag from library
+    thumb.addEventListener('dragstart', e => {
+      state.draggingLibImg = entry;
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    thumb.addEventListener('dragend', () => {
+      state.draggingLibImg = null;
+    });
+  });
+}
+
+// ── Show/Hide Borders ──
+let bordersVisible = true;
+document.getElementById('btnShowFrameBorders').addEventListener('click', () => {
+  state.showBorders = !state.showBorders;
+  redrawBackground();
+  const btn = document.getElementById('btnShowFrameBorders');
+  btn.textContent = state.showBorders ? '⊡ Borders' : '⊟ Borders';
+  // Toggle dashed borders on text frames
+  document.querySelectorAll('.gen-frame.text-frame').forEach(el => {
+    el.style.border = state.showBorders ? '' : 'none';
+  });
+  document.querySelectorAll('.gen-frame.image-frame:not(.has-content)').forEach(el => {
+    el.style.border = state.showBorders ? '' : 'none';
+  });
+});
+
+// ── Clear Content ──
+document.getElementById('btnClearContent').addEventListener('click', () => {
+  if (!confirm('Clear all placed images and text content?')) return;
+  state.frames.forEach(f => {
+    f.imgDataUrl = null;
+    f.content = '';
+  });
+  state.selectedFrameId = null;
+  rebuildOverlays();
+  updateInspector();
+  toast('Content cleared');
+});
+
+// ── Export ──
+document.getElementById('btnExport').addEventListener('click', () => {
+  if (state.frames.length === 0) { toast('No preset loaded'); return; }
+  document.getElementById('exportModal').classList.remove('hidden');
+});
+
+document.getElementById('btnCancelExport').addEventListener('click', () => {
+  document.getElementById('exportModal').classList.add('hidden');
+});
+
+document.getElementById('exportQuality').addEventListener('input', e => {
+  document.getElementById('exportQualityLabel').textContent = Math.round(e.target.value * 100) + '%';
+});
+
+document.getElementById('btnConfirmExport').addEventListener('click', async () => {
+  document.getElementById('exportModal').classList.add('hidden');
+  await doExport();
+});
+
+async function doExport() {
+  const format  = document.getElementById('exportFormat').value;
+  const quality = parseFloat(document.getElementById('exportQuality').value);
+  const scale   = parseInt(document.getElementById('exportScale').value);
+  const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+
+  const W = state.canvasW * scale;
+  const H = state.canvasH * scale;
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+  octx.scale(scale, scale);
+
+  // Background
+  if (state.bgImage) {
+    octx.drawImage(state.bgImage, 0, 0, state.canvasW, state.canvasH);
+  } else {
+    octx.fillStyle = '#f5f0e8';
+    octx.fillRect(0, 0, state.canvasW, state.canvasH);
+    octx.strokeStyle = 'rgba(0,0,0,0.04)';
+    octx.lineWidth = 1;
+    for (let y = 0; y < state.canvasH; y += 28) {
+      octx.beginPath(); octx.moveTo(0,y); octx.lineTo(state.canvasW,y); octx.stroke();
+    }
+  }
+
+  // Render each frame
+  for (const f of state.frames) {
+    if (f.type === 'image' && f.imgDataUrl) {
+      await new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          octx.save();
+          octx.beginPath();
+          octx.rect(f.x, f.y, f.w, f.h);
+          octx.clip();
+          const fitMode = f.fitMode || 'cover';
+          const iw = img.naturalWidth, ih = img.naturalHeight;
+          let sx=0, sy=0, sw=iw, sh=ih;
+          let dx=f.x, dy=f.y, dw=f.w, dh=f.h;
+          if (fitMode === 'cover') {
+            const scaleX = f.w / iw, scaleY = f.h / ih;
+            const sc = Math.max(scaleX, scaleY);
+            const rw = iw*sc, rh = ih*sc;
+            dx = f.x + (f.w - rw) / 2;
+            dy = f.y + (f.h - rh) / 2;
+            dw = rw; dh = rh;
+          } else { // contain
+            const scaleX = f.w / iw, scaleY = f.h / ih;
+            const sc = Math.min(scaleX, scaleY);
+            const rw = iw*sc, rh = ih*sc;
+            dx = f.x + (f.w - rw) / 2;
+            dy = f.y + (f.h - rh) / 2;
+            dw = rw; dh = rh;
+          }
+          octx.drawImage(img, dx, dy, dw, dh);
+          octx.restore();
+          resolve();
+        };
+        img.onerror = resolve;
+        img.src = f.imgDataUrl;
+      });
+    }
+
+    if (f.type === 'text' && f.content) {
+      octx.save();
+      octx.beginPath();
+      octx.rect(f.x, f.y, f.w, f.h);
+      octx.clip();
+
+      const bold   = f.bold   ? 'bold '   : '';
+      const italic = f.italic ? 'italic ' : '';
+      const fs     = f.fontSize || 16;
+      octx.font = `${italic}${bold}${fs}px "${f.fontFamily || 'Times New Roman'}", serif`;
+      octx.fillStyle = f.color || '#111111';
+      octx.textBaseline = 'top';
+
+      const align = f.textAlign || 'left';
+      octx.textAlign = align;
+
+      const x = align === 'right'  ? f.x + f.w - 6
+               : align === 'center' ? f.x + f.w / 2
+               : f.x + 6;
+
+      // Word-wrap
+      const words = f.content.split('\n');
+      let cy = f.y + 6;
+      const lineH = fs * 1.4;
+
+      words.forEach(paragraph => {
+        if (!paragraph.trim()) { cy += lineH * 0.5; return; }
+        const pWords = paragraph.split(' ');
+        let line = '';
+        pWords.forEach(word => {
+          const test = line ? line + ' ' + word : word;
+          const tw = octx.measureText(test).width;
+          if (tw > f.w - 12 && line) {
+            octx.fillText(line, x, cy);
+            cy += lineH;
+            line = word;
+          } else {
+            line = test;
+          }
+        });
+        if (line) { octx.fillText(line, x, cy); cy += lineH; }
+      });
+
+      octx.restore();
+    }
+  }
+
+  // Download
+  const dataUrl = offscreen.toDataURL(mimeType, quality);
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = (state.preset?.name || 'newspaper') + '.' + format;
+  a.click();
+  toast('Exported as ' + format.toUpperCase(), 'success');
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Escape') { state.selectedFrameId = null; updateInspector(); updateRightPanelList(); document.querySelectorAll('.gen-frame').forEach(el => el.classList.remove('selected-frame')); }
+});
+
+// ── Init ──
+window.addEventListener('resize', () => {
+  if (state.preset) fitCanvas();
+});
+
+redrawBackground();
+</script>
+</body>
+</html>
